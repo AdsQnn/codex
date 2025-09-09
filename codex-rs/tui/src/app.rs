@@ -299,6 +299,10 @@ impl App {
             AppEvent::UpdateSandboxPolicy(policy) => {
                 self.chat_widget.set_sandbox_policy(policy);
             }
+            AppEvent::UpdateAutocompact(threshold) => {
+                self.chat_widget.set_autocompact(threshold);
+                self.config.autocompact = threshold;
+            }
         }
         Ok(true)
     }

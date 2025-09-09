@@ -183,6 +183,9 @@ pub struct Config {
     /// All characters are inserted as they are received, and no buffering
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: bool,
+
+    /// Automatically compact the conversation when input tokens exceed this threshold.
+    pub autocompact: Option<u64>,
 }
 
 impl Config {
@@ -342,6 +345,29 @@ pub fn set_project_trusted(codex_home: &Path, project_path: &Path) -> anyhow::Re
     Ok(())
 }
 
+/// Update the `autocompact` threshold in `CODEX_HOME/config.toml`.
+pub fn set_autocompact(codex_home: &Path, threshold: Option<u64>) -> std::io::Result<()> {
+    let config_path = codex_home.join(CONFIG_TOML_FILE);
+    let mut doc = match std::fs::read_to_string(&config_path) {
+        Ok(s) => s
+            .parse::<DocumentMut>()
+            .unwrap_or_else(|_| DocumentMut::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => DocumentMut::new(),
+        Err(e) => return Err(e),
+    };
+
+    match threshold {
+        Some(t) => {
+            doc["autocompact"] = toml_edit::value(t as i64);
+        }
+        None => {
+            doc.remove("autocompact");
+        }
+    }
+
+    std::fs::write(config_path, doc.to_string())
+}
+
 /// Apply a single dotted-path override onto a TOML value.
 fn apply_toml_override(root: &mut TomlValue, path: &str, value: TomlValue) {
     use toml::value::Table;
@@ -460,6 +486,8 @@ pub struct ConfigToml {
     pub model_reasoning_summary: Option<ReasoningSummary>,
     /// Optional verbosity control for GPT-5 models (Responses API `text.verbosity`).
     pub model_verbosity: Option<Verbosity>,
+    /// Automatically compact the conversation when input tokens exceed this threshold.
+    pub autocompact: Option<u64>,
 
     /// Override to force-enable reasoning summaries for the configured model.
     pub model_supports_reasoning_summaries: Option<bool>,
@@ -833,6 +861,7 @@ impl Config {
                 .unwrap_or(false),
             include_view_image_tool,
             disable_paste_burst: cfg.disable_paste_burst.unwrap_or(false),
+            autocompact: cfg.autocompact,
         };
         Ok(config)
     }
@@ -1208,6 +1237,7 @@ model_verbosity = "high"
                 use_experimental_streamable_shell_tool: false,
                 include_view_image_tool: true,
                 disable_paste_burst: false,
+                autocompact: None,
             },
             o3_profile_config
         );
@@ -1265,6 +1295,7 @@ model_verbosity = "high"
             use_experimental_streamable_shell_tool: false,
             include_view_image_tool: true,
             disable_paste_burst: false,
+            autocompact: None,
         };
 
         assert_eq!(expected_gpt3_profile_config, gpt3_profile_config);
@@ -1337,6 +1368,7 @@ model_verbosity = "high"
             use_experimental_streamable_shell_tool: false,
             include_view_image_tool: true,
             disable_paste_burst: false,
+            autocompact: None,
         };
 
         assert_eq!(expected_zdr_profile_config, zdr_profile_config);
@@ -1395,6 +1427,7 @@ model_verbosity = "high"
             use_experimental_streamable_shell_tool: false,
             include_view_image_tool: true,
             disable_paste_burst: false,
+            autocompact: None,
         };
 
         assert_eq!(expected_gpt5_profile_config, gpt5_profile_config);

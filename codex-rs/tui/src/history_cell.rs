@@ -987,6 +987,26 @@ pub(crate) fn new_status_output(
     PlainHistoryCell { lines }
 }
 
+pub(crate) fn new_autocompact_prompt() -> PlainHistoryCell {
+    let lines: Vec<Line<'static>> = vec![
+        "/autocompact".magenta().into(),
+        "Enter token limit (0 to disable)".into(),
+    ];
+    PlainHistoryCell { lines }
+}
+
+pub(crate) fn new_autocompact_set(threshold: Option<u64>) -> PlainHistoryCell {
+    let msg = match threshold {
+        Some(t) => format!("Enabled at {t} tokens"),
+        None => "Disabled".to_string(),
+    };
+    let lines: Vec<Line<'static>> = vec![
+        "/autocompact".magenta().into(),
+        msg.into(),
+    ];
+    PlainHistoryCell { lines }
+}
+
 /// Render a summary of configured MCP servers from the current `Config`.
 pub(crate) fn empty_mcp_output() -> PlainHistoryCell {
     let lines: Vec<Line<'static>> = vec![
