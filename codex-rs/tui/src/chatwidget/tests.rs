@@ -241,6 +241,7 @@ fn make_chatwidget_manual() -> (
         frame_requester: FrameRequester::test_dummy(),
         show_welcome_banner: true,
         queued_user_messages: VecDeque::new(),
+        awaiting_autocompact_input: false,
         suppress_session_configured_redraw: false,
     };
     (widget, rx, op_rx)

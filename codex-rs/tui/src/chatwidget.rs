@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use codex_core::config::Config;
+use codex_core::config::{self};
 use codex_core::protocol::AgentMessageDeltaEvent;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningDeltaEvent;
@@ -65,6 +66,8 @@ use crate::history_cell::CommandOutput;
 use crate::history_cell::ExecCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::PatchEventType;
+use crate::history_cell::new_autocompact_prompt;
+use crate::history_cell::new_autocompact_set;
 use crate::slash_command::SlashCommand;
 use crate::tui::FrameRequester;
 // streaming internals are provided by crate::streaming and crate::markdown_stream
@@ -130,6 +133,7 @@ pub(crate) struct ChatWidget {
     suppress_session_configured_redraw: bool,
     // User messages queued while a turn is in progress
     queued_user_messages: VecDeque<UserMessage>,
+    awaiting_autocompact_input: bool,
 }
 
 struct UserMessage {
@@ -662,6 +666,7 @@ impl ChatWidget {
             full_reasoning_buffer: String::new(),
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            awaiting_autocompact_input: false,
             show_welcome_banner: true,
             suppress_session_configured_redraw: false,
         }
@@ -714,6 +719,7 @@ impl ChatWidget {
             full_reasoning_buffer: String::new(),
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            awaiting_autocompact_input: false,
             show_welcome_banner: false,
             suppress_session_configured_redraw: true,
         }
@@ -829,6 +835,10 @@ impl ChatWidget {
             SlashCommand::Compact => {
                 self.clear_token_usage();
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Compact));
+            }
+            SlashCommand::Autocompact => {
+                self.awaiting_autocompact_input = true;
+                self.add_to_history(new_autocompact_prompt());
             }
             SlashCommand::Model => {
                 self.open_model_popup();
@@ -955,6 +965,19 @@ impl ChatWidget {
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
         let UserMessage { text, image_paths } = user_message;
+        if self.awaiting_autocompact_input {
+            self.awaiting_autocompact_input = false;
+            let threshold = text.trim().parse::<u64>().ok().filter(|t| *t > 0);
+            self.config.autocompact = threshold;
+            if let Err(e) = config::set_autocompact(&self.config.codex_home, threshold) {
+                tracing::error!("failed to write autocompact: {e}");
+            }
+            self.app_event_tx
+                .send(AppEvent::UpdateAutocompact(threshold));
+            self.add_to_history(new_autocompact_set(threshold));
+            return;
+        }
+
         let mut items: Vec<InputItem> = Vec::new();
 
         if !text.is_empty() {
@@ -1271,6 +1294,10 @@ impl ChatWidget {
     /// Set the model in the widget's config copy.
     pub(crate) fn set_model(&mut self, model: String) {
         self.config.model = model;
+    }
+
+    pub(crate) fn set_autocompact(&mut self, threshold: Option<u64>) {
+        self.config.autocompact = threshold;
     }
 
     pub(crate) fn add_mcp_output(&mut self) {

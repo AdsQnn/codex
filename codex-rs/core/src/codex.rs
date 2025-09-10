@@ -292,10 +292,12 @@ pub(crate) struct Session {
     codex_linux_sandbox_exe: Option<PathBuf>,
     user_shell: shell::Shell,
     show_raw_agent_reasoning: bool,
+    autocompact: Option<u64>,
 }
 
 /// The context needed for a single turn of the conversation.
 #[derive(Debug)]
+#[derive(Clone)]
 pub(crate) struct TurnContext {
     pub(crate) client: ModelClient,
     /// The session's current working directory. All relative paths provided by
@@ -490,6 +492,7 @@ impl Session {
             codex_linux_sandbox_exe: config.codex_linux_sandbox_exe.clone(),
             user_shell: default_shell,
             show_raw_agent_reasoning: config.show_raw_agent_reasoning,
+            autocompact: config.autocompact,
         });
 
         // Dispatch the SessionConfiguredEvent first and then report any errors.
@@ -1606,6 +1609,29 @@ async fn run_task(
                         input_messages: turn_input_messages,
                         last_assistant_message: last_agent_message.clone(),
                     });
+
+                    if let Some(limit) = sess.autocompact {
+                        let usage = {
+                            let st = sess.state.lock_unchecked();
+                            st.token_info.clone()
+                        };
+                        if let Some(info) = usage
+                            && info.total_token_usage.input_tokens > limit
+                        {
+                            const SUMMARIZATION_PROMPT: &str =
+                                include_str!("prompt_for_compact_command.md");
+                            let task = AgentTask::compact(
+                                Arc::clone(&sess),
+                                Arc::new(turn_context.clone()),
+                                sub_id.clone(),
+                                vec![InputItem::Text {
+                                    text: "Start Summarization".to_string(),
+                                }],
+                                SUMMARIZATION_PROMPT.to_string(),
+                            );
+                            sess.set_task(task);
+                        }
+                    }
                     break;
                 }
             }
@@ -1948,6 +1974,7 @@ async fn run_compact_task(
     {
         let mut state = sess.state.lock_unchecked();
         state.history.keep_last_messages(1);
+        state.token_info = None;
     }
 
     let event = Event {
@@ -2913,7 +2940,6 @@ async fn drain_to_completed(
                     })
                     .await
                     .ok();
-
                 return Ok(());
             }
             Ok(_) => continue,

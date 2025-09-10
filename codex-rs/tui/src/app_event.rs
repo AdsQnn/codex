@@ -57,6 +57,9 @@ pub(crate) enum AppEvent {
     /// Update the current sandbox policy in the running app and widget.
     UpdateSandboxPolicy(SandboxPolicy),
 
+    /// Update the autocompact threshold in the running app and widget.
+    UpdateAutocompact(Option<u64>),
+
     /// Forwarded conversation history snapshot from the current conversation.
     ConversationHistory(ConversationHistoryResponseEvent),
 }
